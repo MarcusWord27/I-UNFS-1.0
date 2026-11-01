@@ -2,7 +2,7 @@
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from src.analyzer import nonmutual
+from src.filtered_list import build_list, export_eligible
 from src.runner import UnfollowRunner
 
 class App(tk.Tk):
@@ -12,6 +12,8 @@ class App(tk.Tk):
         self.geometry("760x550")
         self.followers = tk.StringVar()
         self.following = tk.StringVar()
+        self.profile_csv = tk.StringVar()
+        self.excluded = []
         self.minimum = tk.IntVar(value=1)
         self.maximum = tk.IntVar(value=10)
         self.exclude_verified = tk.BooleanVar(value=True)
@@ -25,6 +27,11 @@ class App(tk.Tk):
             ttk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
             ttk.Button(row, text="Browse", command=lambda v=var: v.set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]))).pack(side="left")
         row = ttk.Frame(self)
+        row.pack(fill="x", padx=16, pady=6)
+        ttk.Label(row, text="Profile status CSV", width=17).pack(side="left")
+        ttk.Entry(row, textvariable=self.profile_csv).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Browse", command=lambda: self.profile_csv.set(filedialog.askopenfilename(filetypes=[("CSV", "*.csv")]))).pack(side="left")
+        row = ttk.Frame(self)
         row.pack(pady=8)
         for label, var in (("Min", self.minimum), ("Max", self.maximum)):
             ttk.Label(row, text=label).pack(side="left", padx=5)
@@ -35,7 +42,7 @@ class App(tk.Tk):
         self.protected.pack(fill="x", padx=16)
         buttons = ttk.Frame(self)
         buttons.pack(pady=10)
-        for label, fn in (("Analyze", self.analyze), ("Start", self.start), ("Pause", self.runner.pause), ("Resume", self.runner.resume), ("Stop", self.runner.stop)):
+        for label, fn in (("Analyze", self.analyze), ("Export list", self.export_list), ("Start", self.start), ("Pause", self.runner.pause), ("Resume", self.runner.resume), ("Stop", self.runner.stop)):
             ttk.Button(buttons, text=label, command=fn).pack(side="left", padx=4)
         self.results = tk.Text(self, height=14, state="disabled")
         self.results.pack(fill="both", expand=True, padx=16, pady=8)
@@ -50,10 +57,22 @@ class App(tk.Tk):
         self.results.configure(state="disabled")
     def analyze(self):
         try:
-            self.queue = nonmutual(self.followers.get(), self.following.get(), self.protected.get().split(","))
-            self.report(f"Found {len(self.queue)} non-mutual accounts; verification status not yet known.")
+            self.queue, self.excluded = build_list(self.followers.get(), self.following.get(), self.protected.get().split(","), self.profile_csv.get())
+            self.report(f"Eligible non-followers: {len(self.queue)} | Excluded/unknown: {len(self.excluded)}")
+            for username in self.queue:
+                self.report(f"ELIGIBLE @{username}")
+            for username, reason in self.excluded:
+                self.report(f"EXCLUDED @{username}: {reason}")
         except Exception as exc:
             messagebox.showerror("Import error", str(exc))
+    def export_list(self):
+        if not self.queue:
+            messagebox.showinfo("No accounts", "No eligible accounts to export. Analyze first.")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if path:
+            export_eligible(path, self.queue)
+            self.report(f"Exported {len(self.queue)} eligible usernames to CSV")
     def start(self):
         try:
             low, high = self.minimum.get(), self.maximum.get()
