@@ -18,6 +18,7 @@ def _flag(value):
 
 def load_profile_status(path):
     statuses = {}
+    conflicts = set()
     if not path:
         return statuses
     with Path(path).open(encoding="utf-8-sig", newline="") as stream:
@@ -29,7 +30,10 @@ def load_profile_status(path):
             if not name:
                 continue
             status = (_flag(row["is_private"]), _flag(row["is_verified"]))
+            if name in conflicts:
+                continue
             if name in statuses and statuses[name] != status:
+                conflicts.add(name)
                 statuses[name] = (None, None)
             else:
                 statuses[name] = status
